@@ -39,12 +39,17 @@ st.sidebar.markdown("""
 ---
 """, unsafe_allow_html=True)
 
-# Tenant selector (multi-tenancy demo)
-tenant = st.sidebar.selectbox(
+# Tenant selector (multi-tenancy demo) — drives data isolation
+tenants = get_tenants()
+tenant_names = [t["name"] for t in tenants]
+tenant_display = st.sidebar.selectbox(
     "🏢 Manufacturer",
-    ["MedDevice Corp", "OrthoTech Inc"],
-    help="Switch between tenants to see data isolation"
+    tenant_names,
+    help="Switch between tenants to see data isolation",
 )
+tenant_id = get_tenant_id_by_name(tenant_display)
+st.session_state["tenant_id"] = tenant_id
+tenant = tenant_display  # for caption
 
 st.sidebar.markdown("---")
 
