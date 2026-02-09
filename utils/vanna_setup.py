@@ -74,10 +74,38 @@ def setup_vanna():
             api_key = _get_gemini_api_key()
             if not api_key:
                 return None, "Set GOOGLE_API_KEY in Streamlit Secrets or env for cloud deployment.", True
+            # Build CopperVanna with fallback implementations for abstract methods
+            # (needed if the installed Vanna version's GoogleGeminiChat doesn't provide them)
             class CopperVanna(ChromaDB_VectorStore, GoogleGeminiChat):
                 def __init__(self, config=None):
                     ChromaDB_VectorStore.__init__(self, config=config)
                     GoogleGeminiChat.__init__(self, config=config)
+
+                # Fallback implementations – only used if parent classes don't provide them
+                def system_message(self, message: str):
+                    return {"role": "system", "content": message}
+
+                def user_message(self, message: str):
+                    return {"role": "user", "content": message}
+
+                def assistant_message(self, message: str):
+                    return {"role": "assistant", "content": message}
+
+                def submit_prompt(self, prompt, **kwargs) -> str:
+                    import google.generativeai as genai
+                    genai.configure(api_key=self.config.get("api_key", ""))
+                    model = genai.GenerativeModel(self.config.get("model", "gemini-1.5-flash"))
+                    # Flatten prompt list into a single string
+                    if isinstance(prompt, list):
+                        flat = "\n\n".join(
+                            (p.get("content", str(p)) if isinstance(p, dict) else str(p))
+                            for p in prompt
+                        )
+                    else:
+                        flat = str(prompt)
+                    response = model.generate_content(flat)
+                    return response.text
+
             vn = CopperVanna(config={
                 "path": CHROMA_PATH,
                 "api_key": api_key,
