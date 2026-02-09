@@ -23,12 +23,7 @@ def render_filters():
     structures = ["All", "PV", "DV", "TV", "Access", "All Play"]
     selected_structure = st.sidebar.selectbox("Deal Structure", structures)
 
-    st.sidebar.markdown("---")
-    st.sidebar.markdown(
-        "⏱️ **Data Freshness**<br>"
-        "<span style='color: #2ECC71;'>● Live</span> — Refreshed 2 min ago",
-        unsafe_allow_html=True,
-    )
+
 
     return {
         "category": selected_category,
