@@ -6,16 +6,17 @@ Drill-down into individual customer (IDN) performance.
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
-from utils.data_loader import query_params, get_idn_list
+from utils.data_loader import query_params, get_idn_list, get_current_tenant_id
 from components.charts import COPPER_COLORS, apply_copper_layout
 from components.kpi_cards import render_kpi_row, format_currency
 
 st.title("🔍 Customer Intelligence")
 st.caption("Discover Module — Deep-dive into customer deal history, pricing, and risk")
 
-# ─── Customer Selector ──────────────────────────────────────────────────────
+# ─── Customer Selector (tenant-scoped) ──────────────────────────────────────
 
-idn_list = get_idn_list()
+tenant_id = get_current_tenant_id()
+idn_list = get_idn_list(_tenant_id=tenant_id)
 selected_idn_name = st.selectbox(
     "Select Customer (IDN)",
     idn_list["name"].tolist(),
@@ -28,8 +29,8 @@ st.markdown("---")
 # ─── Customer Overview KPIs ─────────────────────────────────────────────────
 
 customer_data = query_params(
-    "SELECT * FROM v_customer_performance WHERE idn_id = ?",
-    [idn_id],
+    "SELECT * FROM v_customer_performance WHERE idn_id = ? AND tenant_id = ?",
+    [idn_id, tenant_id],
 )
 
 if len(customer_data) > 0:
@@ -74,11 +75,11 @@ contracts = query_params(
         COALESCE(cr.total_revenue, 0) as total_revenue,
         COALESCE(cr.risk_status, 'Unknown') as risk_status
     FROM contracts c
-    LEFT JOIN v_contract_risk cr ON c.contract_id = cr.contract_id
-    WHERE c.idn_id = ?
+    LEFT JOIN v_contract_risk cr ON c.contract_id = cr.contract_id AND cr.tenant_id = c.tenant_id
+    WHERE c.idn_id = ? AND c.tenant_id = ?
     ORDER BY c.status, c.end_date
     """,
-    [idn_id],
+    [idn_id, tenant_id],
 )
 
 if len(contracts) > 0:
@@ -157,11 +158,11 @@ pricing = query_params(
         ROUND(AVG(total_discount_pct) * 100, 1) as avg_total_discount,
         COUNT(*) as txn_count
     FROM transactions
-    WHERE idn_id = ?
+    WHERE idn_id = ? AND tenant_id = ?
     GROUP BY device_category
     ORDER BY avg_list DESC
     """,
-    [idn_id],
+    [idn_id, tenant_id],
 )
 
 if len(pricing) > 0:
@@ -209,11 +210,11 @@ recent_txns = query_params(
         t.deal_structure
     FROM transactions t
     JOIN products p ON t.product_id = p.product_id
-    WHERE t.idn_id = ?
+    WHERE t.idn_id = ? AND t.tenant_id = ?
     ORDER BY t.transaction_date DESC
     LIMIT 50
     """,
-    [idn_id],
+    [idn_id, tenant_id],
 )
 
 st.dataframe(recent_txns.rename(columns={
@@ -247,10 +248,10 @@ rebates = query_params(
         r.earned
     FROM rebate_programs r
     JOIN contracts c ON r.contract_id = c.contract_id
-    WHERE c.idn_id = ?
+    WHERE c.idn_id = ? AND c.tenant_id = ?
     ORDER BY r.rebate_type
     """,
-    [idn_id],
+    [idn_id, tenant_id],
 )
 
 if len(rebates) > 0:
