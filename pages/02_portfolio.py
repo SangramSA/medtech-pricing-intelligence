@@ -5,7 +5,8 @@ The main dashboard showing portfolio-level pricing intelligence.
 
 import streamlit as st
 from utils.data_loader import (
-    query, get_kpi, get_portfolio_summary, get_price_waterfall,
+    get_kpi, get_kpi_params, get_current_tenant_id, build_tenant_where,
+    get_portfolio_summary, get_price_waterfall,
     get_customer_performance, get_monthly_trends, get_contract_risk,
 )
 from components.charts import (
@@ -30,12 +31,17 @@ where_trends = build_where_clause(filters, use_gpo_name=False, include_keys=["ca
 where_customers = build_where_clause(filters, use_gpo_name=True, include_keys=["region", "gpo"])
 where_risk = build_where_clause(filters, use_gpo_name=False, include_keys=["category", "structure"])
 
-# ─── KPI Cards ──────────────────────────────────────────────────────────────
+# ─── KPI Cards (tenant-scoped) ──────────────────────────────────────────────
 
-total_rev = get_kpi(f"SELECT ROUND(SUM(invoice_price * quantity), 2) FROM transactions{where}")
-avg_margin = get_kpi(f"SELECT ROUND(AVG(margin_pct), 1) FROM transactions{where}")
-active_contracts = get_kpi("SELECT COUNT(*) FROM contracts WHERE status = 'Active'")
-at_risk = get_kpi(f"SELECT COUNT(*) FROM v_contract_risk{where_risk} AND risk_status IN ('Critical', 'At Risk')" if where_risk else "SELECT COUNT(*) FROM v_contract_risk WHERE risk_status IN ('Critical', 'At Risk')")
+total_rev = get_kpi(f"SELECT ROUND(SUM(invoice_price * quantity), 2) FROM transactions{build_tenant_where(where)}")
+avg_margin = get_kpi(f"SELECT ROUND(AVG(margin_pct), 1) FROM transactions{build_tenant_where(where)}")
+active_contracts = get_kpi_params(
+    "SELECT COUNT(*) FROM contracts WHERE tenant_id = ? AND status = 'Active'",
+    [get_current_tenant_id()],
+)
+risk_conditions = (where_risk.replace(" WHERE ", "").strip() + " AND ") if where_risk else ""
+at_risk_extra = risk_conditions + "risk_status IN ('Critical', 'At Risk')"
+at_risk = get_kpi(f"SELECT COUNT(*) FROM v_contract_risk{build_tenant_where(at_risk_extra)}")
 
 render_kpi_row([
     {"label": "Total Revenue", "value": format_currency(total_rev or 0), "delta": "+12.3% vs prior year", "delta_color": "normal"},
@@ -51,7 +57,7 @@ st.markdown("---")
 st.subheader("💧 Price Waterfall Analysis")
 st.caption("Decomposing List Price → Lowest Net across every discount layer. This is where margin leaks.")
 
-waterfall_data = get_price_waterfall(where_waterfall)
+waterfall_data = get_price_waterfall(where_waterfall, get_current_tenant_id())
 
 waterfall_category = st.selectbox(
     "Select category",
@@ -71,12 +77,12 @@ col1, col2 = st.columns([3, 2])
 
 with col1:
     st.subheader("📈 Margin Trend")
-    trends = get_monthly_trends(where_trends)
+    trends = get_monthly_trends(where_trends, get_current_tenant_id())
     st.plotly_chart(render_margin_trend(trends), use_container_width=True)
 
 with col2:
     st.subheader("📦 Revenue by Category")
-    portfolio = get_portfolio_summary(where_portfolio)
+    portfolio = get_portfolio_summary(where_portfolio, get_current_tenant_id())
     st.plotly_chart(render_revenue_by_category(portfolio), use_container_width=True)
 
 st.markdown("---")
@@ -91,7 +97,7 @@ with col3:
 
 with col4:
     st.subheader("🌍 Revenue by Region")
-    customers = get_customer_performance(where_customers)
+    customers = get_customer_performance(where_customers, get_current_tenant_id())
     st.plotly_chart(render_region_map(customers), use_container_width=True)
 
 st.markdown("---")
@@ -107,7 +113,7 @@ st.markdown("---")
 # ─── Risk Dashboard ────────────────────────────────────────────────────────
 
 st.subheader("⚠️ Contract Risk Overview")
-risk_data = get_contract_risk(where_risk)
+risk_data = get_contract_risk(where_risk, get_current_tenant_id())
 
 critical = len(risk_data[risk_data["risk_status"] == "Critical"])
 at_risk_count = len(risk_data[risk_data["risk_status"] == "At Risk"])
