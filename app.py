@@ -17,7 +17,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Hide Streamlit default elements for cleaner look
+# Hide Streamlit default elements for cleaner look (including duplicate sidebar page nav)
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
@@ -26,7 +26,29 @@ st.markdown("""
     div[data-testid="stSidebarHeader"] > img {
         height: 40px;
     }
-    .block-container { padding-top: 1rem; }
+    .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 100%; }
+    /* Sidebar ~25% wider and larger text */
+    [data-testid="stSidebar"] { min-width: 26rem; width: 26rem; }
+    [data-testid="stSidebar"] > div:first-child { width: 26rem; }
+    [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] p, [data-testid="stSidebar"] label, [data-testid="stSidebar"] .stCaption { font-size: 1.05rem !important; }
+    [data-testid="stSidebar"] h1 { font-size: 1.75rem !important; }
+    [data-testid="stSidebar"] h2 { font-size: 1.35rem !important; }
+    /* Hide Streamlit's built-in multipage nav so only our custom "Navigate" radio shows */
+    section[data-testid="stSidebarNav"], [data-testid="stSidebarNav"], [data-testid="stSidebarNavItems"] { display: none !important; }
+    /* Hide sidebar collapse/icon button */
+    [data-testid="stSidebar"] button:has(span[data-testid="stIconMaterial"]) { display: none !important; }
+    /* Home page card-style sections */
+    .copper-home-card {
+        background-color: rgba(30, 37, 48, 0.6);
+        border: 1px solid rgba(184, 115, 51, 0.25);
+        border-radius: 8px;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .copper-home-card h4 { margin-top: 0; margin-bottom: 0.75rem; color: #FAFAFA; }
+    .copper-home-card table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    .copper-home-card th, .copper-home-card td { padding: 0.4rem 0.75rem; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.08); color: #FAFAFA; }
+    .copper-home-card th { color: #B87333; font-weight: 600; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,6 +91,10 @@ st.sidebar.caption(f"Tenant: {tenant} | v0.1.0-POC")
 if page == "🏠 Home":
     st.title("🏥 COPPER")
     st.markdown("### Comprehensive Pricing & Performance Excellence Resource")
+    st.markdown(
+        '<p style="color: #B87333; font-size: 1rem; margin-top: -0.5rem;">MedTech pricing intelligence — dashboards, customer drill-downs, and natural language querying.</p>',
+        unsafe_allow_html=True,
+    )
     st.markdown("---")
 
     st.markdown("""
@@ -85,34 +111,38 @@ if page == "🏠 Home":
 
     st.markdown("---")
 
-    col1, col2 = st.columns(2)
+    st.markdown("""
+    <div class="copper-home-card">
+    <h4>In this POC</h4>
+    <table>
+    <thead><tr><th>Area</th><th>What you can do</th></tr></thead>
+    <tbody>
+    <tr><td><strong>Portfolio (Drive)</strong></td><td>Margin trends, revenue by category, price waterfall, risk overview</td></tr>
+    <tr><td><strong>Customer Intel (Discover)</strong></td><td>Drill down by customer (IDN), contracts, pricing, rebates</td></tr>
+    <tr><td><strong>AI Assistant</strong></td><td>Ask questions about your pricing data in plain English</td></tr>
+    <tr><td><strong>Architecture</strong></td><td>System overview and data model</td></tr>
+    </tbody>
+    </table>
+    </div>
+    """, unsafe_allow_html=True)
 
-    with col1:
-        st.markdown("#### 📦 Platform Modules")
-        st.markdown("""
-        | Module | Purpose |
-        |--------|---------|
-        | **Discover** | Pre-deal intelligence — customer health, competitive landscape |
-        | **Build** | Deal construction — pricing recommendations, guardrails |
-        | **Monitor** | Active deal tracking — performance, at-risk alerts |
-        | **Drive** | Portfolio dashboards — margin trends, revenue analysis |
-        | **Optimize** | Opportunity identification — margin recovery, bundling |
-        """)
+    st.markdown("""
+    <div class="copper-home-card">
+    <h4>Capabilities in this demo</h4>
+    <table>
+    <thead><tr><th>Capability</th><th>Description</th></tr></thead>
+    <tbody>
+    <tr><td><strong>Price Waterfall</strong></td><td>Decompose list price to lowest net across discount layers</td></tr>
+    <tr><td><strong>Deal / risk scoring</strong></td><td>Risk assessment and at-risk contract views</td></tr>
+    <tr><td><strong>NL querying</strong></td><td>Ask pricing questions in plain English (AI Assistant)</td></tr>
+    <tr><td><strong>Compliance</strong></td><td>Safe Harbor and Anti-Kickback flags on contracts</td></tr>
+    <tr><td><strong>Multi-tenant</strong></td><td>Isolated data per manufacturer</td></tr>
+    </tbody>
+    </table>
+    </div>
+    """, unsafe_allow_html=True)
 
-    with col2:
-        st.markdown("#### 🔑 Key Capabilities")
-        st.markdown("""
-        | Capability | Description |
-        |-----------|-------------|
-        | **Price Waterfall** | Decompose list price → lowest net across discount layers |
-        | **Deal Scoring** | AI-powered risk assessment for every contract |
-        | **NL Querying** | Ask pricing questions in plain English |
-        | **Compliance** | Safe Harbor & Anti-Kickback monitoring |
-        | **Multi-Tenant** | Isolated data per manufacturer |
-        """)
-
-    st.markdown("---")
-    st.info("👈 Use the sidebar to navigate to **Portfolio (Drive)** for dashboards or **AI Assistant** to query data with natural language.")
+    st.info("Use the sidebar to open **Portfolio**, **Customer Intel**, or **AI Assistant**.")
 
 elif page == "📊 Portfolio (Drive)":
     exec(open(os.path.join(_BASE_DIR, "pages", "02_portfolio.py")).read())
