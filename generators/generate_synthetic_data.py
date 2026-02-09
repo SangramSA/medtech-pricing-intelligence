@@ -338,6 +338,13 @@ def load_into_duckdb(gpos_df, idns_df, facilities_df, products_df,
 
     con = duckdb.connect(DB_PATH)
 
+    # Ensure date columns are datetime so DuckDB creates DATE/TIMESTAMP (not VARCHAR)
+    contracts_df = contracts_df.copy()
+    contracts_df["start_date"] = pd.to_datetime(contracts_df["start_date"])
+    contracts_df["end_date"] = pd.to_datetime(contracts_df["end_date"])
+    transactions_df = transactions_df.copy()
+    transactions_df["transaction_date"] = pd.to_datetime(transactions_df["transaction_date"])
+
     # Register and persist tables
     tables = {
         "gpos": gpos_df,
