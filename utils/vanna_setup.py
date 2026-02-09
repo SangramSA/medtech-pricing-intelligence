@@ -121,7 +121,7 @@ def setup_vanna():
 
                 def __init__(self, config=None):
                     ChromaDB_VectorStore.__init__(self, config=config)
-                    model_name = (config or {}).get("model_name", "gemini-1.5-flash")
+                    model_name = (config or {}).get("model_name", "gemini-3-flash-preview")
                     self.temperature = (config or {}).get("temperature", 0.7)
                     self.chat_model = genai.GenerativeModel(model_name)
 
@@ -144,7 +144,7 @@ def setup_vanna():
             vn = CopperVanna(config={
                 "path": CHROMA_PATH,
                 "api_key": api_key,
-                "model_name": "gemini-1.5-flash",
+                "model_name": "gemini-3-flash-preview",
             })
 
         else:
