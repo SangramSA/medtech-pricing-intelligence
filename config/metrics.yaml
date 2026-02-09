@@ -1,0 +1,20 @@
+# COPPER POC - KPI Definitions (config-driven metrics)
+kpis:
+  total_revenue:
+    label: "Total Revenue"
+    sql: "SELECT ROUND(SUM(invoice_price * quantity), 2) FROM transactions"
+    format: "currency"
+    delta_sql: "SELECT ROUND(SUM(invoice_price * quantity), 2) FROM transactions WHERE year = 2024"
+  avg_margin:
+    label: "Avg Margin %"
+    sql: "SELECT ROUND(AVG(margin_pct), 1) FROM transactions"
+    format: "percent"
+  active_contracts:
+    label: "Active Contracts"
+    sql: "SELECT COUNT(*) FROM contracts WHERE status = 'Active'"
+    format: "integer"
+  at_risk_deals:
+    label: "At-Risk Deals"
+    sql: "SELECT COUNT(*) FROM v_contract_risk WHERE risk_status IN ('Critical', 'At Risk')"
+    format: "integer"
+    alert_threshold: 10

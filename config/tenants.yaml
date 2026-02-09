@@ -1,0 +1,12 @@
+# COPPER POC - Tenant Configuration
+tenants:
+  meddevice_corp:
+    name: "MedDevice Corp"
+    logo: "🏥"
+    accent_color: "#B87333"
+    description: "Leading manufacturer of orthopedic and cardiovascular devices"
+  orthotech_inc:
+    name: "OrthoTech Inc"
+    logo: "🦴"
+    accent_color: "#4A90D9"
+    description: "Specialized orthopedic device manufacturer"
