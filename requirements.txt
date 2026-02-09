@@ -1,5 +1,6 @@
 duckdb>=0.10.0
 streamlit>=1.38.0
+pyyaml>=6.0
 vanna[chromadb]>=0.7.0
 ollama>=0.4.0
 plotly>=5.24.0
