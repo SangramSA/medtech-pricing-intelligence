@@ -6,10 +6,9 @@ Local: Ollama (Llama3). Cloud: Google Gemini (set GOOGLE_API_KEY in Secrets).
 
 import logging
 import re
-import time
 import streamlit as st
 from utils.data_loader import get_current_tenant_id
-from utils.vanna_setup import setup_vanna, is_vanna_warmup_done
+from utils.vanna_setup import setup_vanna
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +43,10 @@ def inject_tenant_filter(sql: str, tenant_id: str) -> str:
 st.title("🤖 AI Pricing Assistant")
 st.caption("Ask questions about your pricing data in plain English. Powered by Vanna AI +  Gemini.")
 
-# ─── Wait for background warmup or get Vanna ─────────────────────────────────
+# ─── Initialize Vanna (cached; blocks once on first call, instant after) ──────
 
-if not is_vanna_warmup_done():
-    st.info("Preparing AI… (runs once at app start)")
-    time.sleep(2)
-    st.rerun()
-
-vn, error, use_gemini = setup_vanna()
+with st.spinner("Preparing AI… (first load only)"):
+    vn, error, use_gemini = setup_vanna()
 
 # ─── Model caption ───────────────────────────────────────────────────────────
 
