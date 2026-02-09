@@ -7,8 +7,15 @@ import os
 import streamlit as st
 
 from config.tenant_config import get_tenants, get_tenant_id_by_name
+from utils.ensure_db import ensure_data_ready
+from utils.vanna_setup import start_vanna_warmup_thread
 
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# Ensure DB exists (runs generator once if missing; used for Streamlit Cloud / fresh local)
+ensure_data_ready()
+# Warm Vanna in background so AI Assistant page loads fast
+start_vanna_warmup_thread()
 
 st.set_page_config(
     page_title="COPPER - Pricing Intelligence",
@@ -79,7 +86,7 @@ st.sidebar.markdown("---")
 page = st.sidebar.radio(
     "Navigate",
     ["🏠 Home", "📊 Portfolio (Drive)", "🔍 Customer Intel (Discover)",
-     "🤖 AI Assistant", "⚙️ Architecture"],
+     "🤖 AI Assistant"],
     label_visibility="collapsed",
 )
 
@@ -120,7 +127,6 @@ if page == "🏠 Home":
     <tr><td><strong>Portfolio (Drive)</strong></td><td>Margin trends, revenue by category, price waterfall, risk overview</td></tr>
     <tr><td><strong>Customer Intel (Discover)</strong></td><td>Drill down by customer (IDN), contracts, pricing, rebates</td></tr>
     <tr><td><strong>AI Assistant</strong></td><td>Ask questions about your pricing data in plain English</td></tr>
-    <tr><td><strong>Architecture</strong></td><td>System overview and data model</td></tr>
     </tbody>
     </table>
     </div>
@@ -152,6 +158,3 @@ elif page == "🔍 Customer Intel (Discover)":
 
 elif page == "🤖 AI Assistant":
     exec(open(os.path.join(_BASE_DIR, "pages", "04_ai_assistant.py")).read())
-
-elif page == "⚙️ Architecture":
-    exec(open(os.path.join(_BASE_DIR, "pages", "05_architecture.py")).read())
