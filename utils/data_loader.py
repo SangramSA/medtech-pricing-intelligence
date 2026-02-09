@@ -4,10 +4,13 @@ Cached DuckDB query functions used by all Streamlit pages.
 Tenant isolation: get_current_tenant_id() and build_tenant_where() scope all data to the selected tenant.
 """
 
+import logging
 import duckdb
 import pandas as pd
 import streamlit as st
 import os
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "copper.duckdb")
 
@@ -37,10 +40,15 @@ def get_connection():
 @st.cache_data(ttl=300)
 def query(sql: str) -> pd.DataFrame:
     """Execute SQL and return a DataFrame. Cached for 5 minutes."""
+    logger.debug("Executing query: %s", sql[:200])
     con = get_connection()
     try:
         result = con.execute(sql).fetchdf()
+        logger.debug("Query returned %d rows", len(result))
         return result
+    except Exception as e:
+        logger.error("Query failed: %s | SQL: %s", e, sql[:300])
+        raise
     finally:
         con.close()
 
@@ -48,10 +56,15 @@ def query(sql: str) -> pd.DataFrame:
 @st.cache_data(ttl=300)
 def query_params(sql: str, params: list) -> pd.DataFrame:
     """Execute parameterized SQL (use ? placeholders) and return a DataFrame. Cached per params."""
+    logger.debug("Executing parameterized query: %s | params: %s", sql[:200], params)
     con = get_connection()
     try:
         result = con.execute(sql, params).fetchdf()
+        logger.debug("Parameterized query returned %d rows", len(result))
         return result
+    except Exception as e:
+        logger.error("Parameterized query failed: %s | SQL: %s | params: %s", e, sql[:300], params)
+        raise
     finally:
         con.close()
 
@@ -59,10 +72,16 @@ def query_params(sql: str, params: list) -> pd.DataFrame:
 @st.cache_data(ttl=300)
 def get_kpi(sql: str):
     """Execute SQL that returns a single scalar value."""
+    logger.debug("Executing KPI query: %s", sql[:200])
     con = get_connection()
     try:
         result = con.execute(sql).fetchone()
-        return result[0] if result else 0
+        value = result[0] if result else 0
+        logger.debug("KPI result: %s", value)
+        return value
+    except Exception as e:
+        logger.error("KPI query failed: %s | SQL: %s", e, sql[:300])
+        raise
     finally:
         con.close()
 
@@ -70,10 +89,16 @@ def get_kpi(sql: str):
 @st.cache_data(ttl=300)
 def get_kpi_params(sql: str, params: list):
     """Execute parameterized SQL that returns a single scalar value. Used for tenant-scoped KPIs."""
+    logger.debug("Executing parameterized KPI query: %s | params: %s", sql[:200], params)
     con = get_connection()
     try:
         result = con.execute(sql, params).fetchone()
-        return result[0] if result else 0
+        value = result[0] if result else 0
+        logger.debug("Parameterized KPI result: %s", value)
+        return value
+    except Exception as e:
+        logger.error("Parameterized KPI query failed: %s | SQL: %s | params: %s", e, sql[:300], params)
+        raise
     finally:
         con.close()
 

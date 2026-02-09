@@ -8,11 +8,14 @@ The Gemini chat is implemented inline to avoid vanna.legacy.google's
 BigQuery/VertexAI import side-effects.
 """
 
+import logging
 import os
 import threading
 import streamlit as st
 
 from utils.data_loader import DB_PATH
+
+logger = logging.getLogger(__name__)
 
 # ChromaDB path (same directory layout as before)
 CHROMA_PATH = os.path.join(os.path.dirname(os.path.dirname(DB_PATH)), "chroma_db")
@@ -28,10 +31,14 @@ def start_vanna_warmup_thread():
     if _warmup_thread_started:
         return
     _warmup_thread_started = True
+    logger.info("Starting Vanna warmup background thread")
 
     def _run():
         try:
             setup_vanna()
+            logger.info("Vanna warmup thread completed successfully")
+        except Exception as e:
+            logger.error("Vanna warmup thread failed: %s", e)
         finally:
             pass  # setup_vanna's finally already sets _vanna_warmup_done
 
@@ -61,15 +68,18 @@ def _import_chromadb_vector_store():
     """Import ChromaDB_VectorStore from the installed Vanna version."""
     try:
         from vanna.legacy.chromadb import ChromaDB_VectorStore
+        logger.debug("Imported ChromaDB_VectorStore from vanna.legacy.chromadb")
         return ChromaDB_VectorStore
     except ImportError:
         pass
     try:
         from vanna.legacy.chromadb.chromadb_vector import ChromaDB_VectorStore
+        logger.debug("Imported ChromaDB_VectorStore from vanna.legacy.chromadb.chromadb_vector")
         return ChromaDB_VectorStore
     except ImportError:
         pass
     from vanna.chromadb import ChromaDB_VectorStore  # vanna <2.0 fallback
+    logger.debug("Imported ChromaDB_VectorStore from vanna.chromadb (legacy fallback)")
     return ChromaDB_VectorStore
 
 
@@ -77,15 +87,18 @@ def _import_ollama():
     """Import Ollama from the installed Vanna version."""
     try:
         from vanna.legacy.ollama import Ollama
+        logger.debug("Imported Ollama from vanna.legacy.ollama")
         return Ollama
     except ImportError:
         pass
     try:
         from vanna.legacy.ollama.ollama import Ollama
+        logger.debug("Imported Ollama from vanna.legacy.ollama.ollama")
         return Ollama
     except ImportError:
         pass
     from vanna.ollama import Ollama  # vanna <2.0 fallback
+    logger.debug("Imported Ollama from vanna.ollama (legacy fallback)")
     return Ollama
 
 
@@ -102,6 +115,7 @@ def setup_vanna():
     """
     global _vanna_warmup_done
     use_gemini = bool(_get_gemini_api_key())
+    logger.info("Setting up Vanna (use_gemini=%s, chroma_path=%s, db_path=%s)", use_gemini, CHROMA_PATH, DB_PATH)
 
     try:
         ChromaDB_VectorStore = _import_chromadb_vector_store()
@@ -112,8 +126,10 @@ def setup_vanna():
 
             api_key = _get_gemini_api_key()
             if not api_key:
+                logger.warning("Gemini selected but no API key found")
                 return None, "Set GOOGLE_API_KEY in Streamlit Secrets or env for cloud deployment.", True
 
+            logger.info("Configuring Gemini with model=gemini-3-flash-preview")
             genai.configure(api_key=api_key)
 
             class CopperVanna(ChromaDB_VectorStore):
@@ -146,6 +162,7 @@ def setup_vanna():
                 "api_key": api_key,
                 "model_name": "gemini-3-flash-preview",
             })
+            logger.info("CopperVanna (Gemini) instance created")
 
         else:
             Ollama = _import_ollama()
@@ -159,7 +176,9 @@ def setup_vanna():
                 "path": CHROMA_PATH,
                 "model": "llama3",
             })
+            logger.info("CopperVanna (Ollama/llama3) instance created")
 
+        logger.info("Connecting to DuckDB at %s", DB_PATH)
         vn.connect_to_duckdb(url=DB_PATH, read_only=True)
 
         # ----- Training data -----
@@ -229,14 +248,17 @@ def setup_vanna():
         for pair in example_pairs:
             vn.train(question=pair["question"], sql=pair["sql"])
 
+        logger.info("Vanna training complete (%d DDL/docs, %d example pairs)", len(training_data), len(example_pairs))
         return vn, None, use_gemini
 
     except ImportError as e:
+        logger.error("Import error during Vanna setup: %s", e, exc_info=True)
         if use_gemini:
             return None, f"Missing Gemini dependency: {e}. Install with: pip install 'vanna[gemini]'", use_gemini
         return None, f"Missing dependency: {e}. Run: pip install 'vanna[chromadb]' ollama", use_gemini
     except Exception as e:
         err = str(e)
+        logger.error("Error during Vanna setup: %s", err, exc_info=True)
         if not use_gemini and ("Connection refused" in err or "connect" in err.lower()):
             return None, "Cannot connect to Ollama. Make sure Ollama is running: ollama serve", use_gemini
         return None, f"Error initializing Vanna: {err}", use_gemini

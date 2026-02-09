@@ -3,6 +3,7 @@ COPPER POC - Main Application Entrypoint
 Comprehensive Pricing & Performance Excellence Resource
 """
 
+import logging
 import os
 import streamlit as st
 
@@ -10,9 +11,18 @@ from config.tenant_config import get_tenants, get_tenant_id_by_name
 from utils.ensure_db import ensure_data_ready
 from utils.vanna_setup import start_vanna_warmup_thread
 
+# Configure logging (once, at app entrypoint)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # Ensure DB exists (runs generator once if missing; used for Streamlit Cloud / fresh local)
+logger.info("COPPER app starting up")
 ensure_data_ready()
 # Warm Vanna in background so AI Assistant page loads fast
 start_vanna_warmup_thread()
@@ -79,6 +89,7 @@ tenant_display = st.sidebar.selectbox(
 tenant_id = get_tenant_id_by_name(tenant_display)
 st.session_state["tenant_id"] = tenant_id
 tenant = tenant_display  # for caption
+logger.info("Tenant selected: %s (id=%s)", tenant_display, tenant_id)
 
 st.sidebar.markdown("---")
 
@@ -94,6 +105,8 @@ st.sidebar.markdown("---")
 st.sidebar.caption(f"Tenant: {tenant} | v0.1.0-POC")
 
 # ─── Page Router ────────────────────────────────────────────────────────────
+
+logger.info("Page navigated: %s", page)
 
 if page == "🏠 Home":
     st.title("🏥 COPPER")

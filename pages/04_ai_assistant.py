@@ -4,11 +4,14 @@ Natural language querying over MedTech pricing data.
 Local: Ollama (Llama3). Cloud: Google Gemini (set GOOGLE_API_KEY in Secrets).
 """
 
+import logging
 import re
 import time
 import streamlit as st
 from utils.data_loader import get_current_tenant_id
 from utils.vanna_setup import setup_vanna, is_vanna_warmup_done
+
+logger = logging.getLogger(__name__)
 
 # Tables/views that are tenant-scoped (have tenant_id)
 TENANT_SCOPED = ("transactions", "contracts", "v_portfolio_summary", "v_price_waterfall",
@@ -34,6 +37,7 @@ def inject_tenant_filter(sql: str, tenant_id: str) -> str:
                 break
         else:
             sql = sql.rstrip().rstrip(";") + f" WHERE {condition} "
+    logger.debug("Injected tenant filter (tenant_id=%s) into SQL", tenant_id)
     return sql
 
 
@@ -63,6 +67,7 @@ st.sidebar.markdown("---")
 # ─── Chat Interface ──────────────────────────────────────────────────────────
 
 if error:
+    logger.warning("Vanna setup error: %s", error)
     st.warning(error)
     st.markdown("---")
     st.markdown("### 💡 Setup Instructions")
@@ -135,8 +140,10 @@ else:
         with st.chat_message("assistant"):
             with st.spinner("Thinking…"):
                 try:
+                    logger.info("Generating SQL for question: %s", user_input)
                     sql = vn.generate_sql(user_input)
                     if sql and sql.strip():
+                        logger.info("Generated SQL: %s", sql[:300])
                         tenant_id = get_current_tenant_id()
                         sql = inject_tenant_filter(sql, tenant_id)
                         st.markdown("Here's what I found:")
@@ -145,6 +152,7 @@ else:
                         try:
                             df = vn.run_sql(sql)
                             if df is not None and len(df) > 0:
+                                logger.info("SQL executed successfully, returned %d rows", len(df))
                                 st.dataframe(df, use_container_width=True, hide_index=True)
                                 st.session_state.chat_history.append({
                                     "role": "assistant",
@@ -153,6 +161,7 @@ else:
                                     "dataframe": df,
                                 })
                             else:
+                                logger.info("SQL executed but returned no results")
                                 st.info("Query returned no results.")
                                 st.session_state.chat_history.append({
                                     "role": "assistant",
@@ -160,6 +169,7 @@ else:
                                     "sql": sql,
                                 })
                         except Exception as e:
+                            logger.error("SQL execution error: %s | SQL: %s", e, sql[:300])
                             st.error(f"SQL execution error: {str(e)}")
                             st.code(sql, language="sql")
                             st.caption("The generated SQL had an error. Try rephrasing your question.")
@@ -169,12 +179,14 @@ else:
                                 "sql": sql,
                             })
                     else:
+                        logger.warning("Vanna returned empty SQL for question: %s", user_input)
                         st.warning("I couldn't generate a query for that question. Try rephrasing?")
                         st.session_state.chat_history.append({
                             "role": "assistant",
                             "content": "I couldn't generate a query for that question.",
                         })
                 except Exception as e:
+                    logger.error("Error generating/running SQL: %s", e, exc_info=True)
                     st.error(f"Error: {str(e)}")
                     st.session_state.chat_history.append({
                         "role": "assistant",
