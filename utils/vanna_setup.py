@@ -2,6 +2,10 @@
 COPPER POC - Shared Vanna AI setup for SQL-from-natural-language.
 Supports Ollama (local, Llama3) and Google Gemini (cloud deploy).
 Used by the AI Assistant page; can be warmed in background at app start.
+
+Vanna 2.0 moved the legacy text-to-SQL classes under vanna.legacy.*
+The Gemini chat is implemented inline to avoid vanna.legacy.google's
+BigQuery/VertexAI import side-effects.
 """
 
 import os
@@ -10,7 +14,7 @@ import streamlit as st
 
 from utils.data_loader import DB_PATH
 
-# ChromaDB path (same as former 04_ai_assistant)
+# ChromaDB path (same directory layout as before)
 CHROMA_PATH = os.path.join(os.path.dirname(os.path.dirname(DB_PATH)), "chroma_db")
 
 # Set by background warmup thread when setup_vanna() has finished (success or failure)
@@ -19,16 +23,18 @@ _warmup_thread_started = False
 
 
 def start_vanna_warmup_thread():
-    """Start a daemon thread that runs setup_vanna() once. Safe to call every rerun; thread starts only once per process."""
+    """Start a daemon thread that runs setup_vanna() once. Safe to call every rerun."""
     global _warmup_thread_started
     if _warmup_thread_started:
         return
     _warmup_thread_started = True
+
     def _run():
         try:
             setup_vanna()
         finally:
             pass  # setup_vanna's finally already sets _vanna_warmup_done
+
     t = threading.Thread(target=_run, daemon=True)
     t.start()
 
@@ -43,9 +49,49 @@ def _get_gemini_api_key():
 
 
 def is_vanna_warmup_done():
-    """True if background warmup has completed (so calling setup_vanna() will use cache or return quickly)."""
+    """True if background warmup has completed."""
     return _vanna_warmup_done
 
+
+# ---------------------------------------------------------------------------
+# Import helpers – Vanna 2.0 moved classes under vanna.legacy.*
+# ---------------------------------------------------------------------------
+
+def _import_chromadb_vector_store():
+    """Import ChromaDB_VectorStore from the installed Vanna version."""
+    try:
+        from vanna.legacy.chromadb import ChromaDB_VectorStore
+        return ChromaDB_VectorStore
+    except ImportError:
+        pass
+    try:
+        from vanna.legacy.chromadb.chromadb_vector import ChromaDB_VectorStore
+        return ChromaDB_VectorStore
+    except ImportError:
+        pass
+    from vanna.chromadb import ChromaDB_VectorStore  # vanna <2.0 fallback
+    return ChromaDB_VectorStore
+
+
+def _import_ollama():
+    """Import Ollama from the installed Vanna version."""
+    try:
+        from vanna.legacy.ollama import Ollama
+        return Ollama
+    except ImportError:
+        pass
+    try:
+        from vanna.legacy.ollama.ollama import Ollama
+        return Ollama
+    except ImportError:
+        pass
+    from vanna.ollama import Ollama  # vanna <2.0 fallback
+    return Ollama
+
+
+# ---------------------------------------------------------------------------
+# setup_vanna  – cached, called once per process
+# ---------------------------------------------------------------------------
 
 @st.cache_resource
 def setup_vanna():
@@ -56,75 +102,59 @@ def setup_vanna():
     """
     global _vanna_warmup_done
     use_gemini = bool(_get_gemini_api_key())
+
     try:
+        ChromaDB_VectorStore = _import_chromadb_vector_store()
+
         if use_gemini:
-            # Try multiple import paths for ChromaDB (varies by Vanna version)
-            try:
-                from vanna.chromadb import ChromaDB_VectorStore
-            except ImportError:
-                from vanna.legacy.chromadb import ChromaDB_VectorStore
-            # Try multiple import paths for Gemini (varies by Vanna version)
-            try:
-                from vanna.google import GoogleGeminiChat
-            except ImportError:
-                try:
-                    from vanna.google.gemini_chat import GoogleGeminiChat
-                except ImportError:
-                    from vanna.integrations.google import GeminiLlmService as GoogleGeminiChat
+            # Inline Gemini chat to avoid vanna.legacy.google's BigQuery/VertexAI imports
+            import google.generativeai as genai
+
             api_key = _get_gemini_api_key()
             if not api_key:
                 return None, "Set GOOGLE_API_KEY in Streamlit Secrets or env for cloud deployment.", True
-            # Build CopperVanna with fallback implementations for abstract methods
-            # (needed if the installed Vanna version's GoogleGeminiChat doesn't provide them)
-            class CopperVanna(ChromaDB_VectorStore, GoogleGeminiChat):
+
+            genai.configure(api_key=api_key)
+
+            class CopperVanna(ChromaDB_VectorStore):
+                """ChromaDB vector store + Google Gemini LLM."""
+
                 def __init__(self, config=None):
                     ChromaDB_VectorStore.__init__(self, config=config)
-                    GoogleGeminiChat.__init__(self, config=config)
+                    model_name = (config or {}).get("model_name", "gemini-1.5-flash")
+                    self.temperature = (config or {}).get("temperature", 0.7)
+                    self.chat_model = genai.GenerativeModel(model_name)
 
-                # Fallback implementations – only used if parent classes don't provide them
                 def system_message(self, message: str):
-                    return {"role": "system", "content": message}
+                    return message
 
                 def user_message(self, message: str):
-                    return {"role": "user", "content": message}
+                    return message
 
                 def assistant_message(self, message: str):
-                    return {"role": "assistant", "content": message}
+                    return message
 
                 def submit_prompt(self, prompt, **kwargs) -> str:
-                    import google.generativeai as genai
-                    genai.configure(api_key=self.config.get("api_key", ""))
-                    model = genai.GenerativeModel(self.config.get("model", "gemini-1.5-flash"))
-                    # Flatten prompt list into a single string
-                    if isinstance(prompt, list):
-                        flat = "\n\n".join(
-                            (p.get("content", str(p)) if isinstance(p, dict) else str(p))
-                            for p in prompt
-                        )
-                    else:
-                        flat = str(prompt)
-                    response = model.generate_content(flat)
+                    response = self.chat_model.generate_content(
+                        prompt,
+                        generation_config={"temperature": self.temperature},
+                    )
                     return response.text
 
             vn = CopperVanna(config={
                 "path": CHROMA_PATH,
                 "api_key": api_key,
-                "model": "gemini-1.5-flash",
                 "model_name": "gemini-1.5-flash",
             })
+
         else:
-            try:
-                from vanna.ollama import Ollama
-            except ImportError:
-                from vanna.legacy.ollama import Ollama
-            try:
-                from vanna.chromadb import ChromaDB_VectorStore
-            except ImportError:
-                from vanna.legacy.chromadb import ChromaDB_VectorStore
+            Ollama = _import_ollama()
+
             class CopperVanna(ChromaDB_VectorStore, Ollama):
                 def __init__(self, config=None):
                     ChromaDB_VectorStore.__init__(self, config=config)
                     Ollama.__init__(self, config=config)
+
             vn = CopperVanna(config={
                 "path": CHROMA_PATH,
                 "model": "llama3",
@@ -132,6 +162,7 @@ def setup_vanna():
 
         vn.connect_to_duckdb(url=DB_PATH, read_only=True)
 
+        # ----- Training data -----
         training_data = [
             """CREATE TABLE gpos (
                 gpo_id VARCHAR, name VARCHAR, admin_fee_pct DOUBLE, member_count INTEGER
