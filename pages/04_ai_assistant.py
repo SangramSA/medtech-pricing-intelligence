@@ -38,7 +38,7 @@ def inject_tenant_filter(sql: str, tenant_id: str) -> str:
 
 
 st.title("🤖 AI Pricing Assistant")
-st.caption("Ask questions about your pricing data in plain English. Powered by Vanna AI + Ollama (local) or Gemini (cloud) + DuckDB.")
+st.caption("Ask questions about your pricing data in plain English. Powered by Vanna AI +  Gemini.")
 
 # ─── Wait for background warmup or get Vanna ─────────────────────────────────
 
@@ -54,7 +54,7 @@ vn, error, use_gemini = setup_vanna()
 st.sidebar.markdown("### 🤖 AI Model")
 if use_gemini:
     st.sidebar.markdown("Using **Gemini** (cloud)")
-    st.sidebar.caption("Model: gemini-1.5-flash")
+    st.sidebar.caption("Model: gemini-3-flash-preview")
 else:
     st.sidebar.markdown("Using **Ollama** (local, free)")
     st.sidebar.caption("Model: llama3")
