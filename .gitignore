@@ -26,9 +26,10 @@ data/raw/
 chroma_db/
 *.chroma/
 
-# IDE
+# IDE / Cursor
 .idea/
 .vscode/
+.cursor/
 *.swp
 *.swo
 
