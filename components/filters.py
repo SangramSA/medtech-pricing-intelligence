@@ -3,20 +3,21 @@ COPPER POC - Sidebar filter components.
 """
 
 import streamlit as st
-from utils.data_loader import get_device_categories, get_regions, get_gpo_names
+from utils.data_loader import get_device_categories, get_regions, get_gpo_names, get_current_tenant_id
 
 
 def render_filters():
-    """Render sidebar filters and return selected values."""
+    """Render sidebar filters and return selected values (tenant-scoped)."""
     st.sidebar.markdown("### 🔍 Filters")
+    tid = get_current_tenant_id()
 
-    categories = ["All"] + get_device_categories()
+    categories = ["All"] + get_device_categories(_tenant_id=tid)
     selected_category = st.sidebar.selectbox("Device Category", categories)
 
-    regions = ["All"] + get_regions()
+    regions = ["All"] + get_regions(_tenant_id=tid)
     selected_region = st.sidebar.selectbox("Region", regions)
 
-    gpos = ["All"] + get_gpo_names()
+    gpos = ["All"] + get_gpo_names(_tenant_id=tid)
     selected_gpo = st.sidebar.selectbox("GPO", gpos)
 
     structures = ["All", "PV", "DV", "TV", "Access", "All Play"]
