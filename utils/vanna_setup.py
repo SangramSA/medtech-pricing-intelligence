@@ -58,11 +58,19 @@ def setup_vanna():
     use_gemini = bool(_get_gemini_api_key())
     try:
         if use_gemini:
-            from vanna.legacy.chromadb import ChromaDB_VectorStore
+            # Try multiple import paths for ChromaDB (varies by Vanna version)
+            try:
+                from vanna.chromadb import ChromaDB_VectorStore
+            except ImportError:
+                from vanna.legacy.chromadb import ChromaDB_VectorStore
+            # Try multiple import paths for Gemini (varies by Vanna version)
             try:
                 from vanna.google import GoogleGeminiChat
             except ImportError:
-                from vanna.google.gemini_chat import GoogleGeminiChat
+                try:
+                    from vanna.google.gemini_chat import GoogleGeminiChat
+                except ImportError:
+                    from vanna.integrations.google import GeminiLlmService as GoogleGeminiChat
             api_key = _get_gemini_api_key()
             if not api_key:
                 return None, "Set GOOGLE_API_KEY in Streamlit Secrets or env for cloud deployment.", True
@@ -77,8 +85,14 @@ def setup_vanna():
                 "model_name": "gemini-1.5-flash",
             })
         else:
-            from vanna.legacy.ollama import Ollama
-            from vanna.legacy.chromadb import ChromaDB_VectorStore
+            try:
+                from vanna.ollama import Ollama
+            except ImportError:
+                from vanna.legacy.ollama import Ollama
+            try:
+                from vanna.chromadb import ChromaDB_VectorStore
+            except ImportError:
+                from vanna.legacy.chromadb import ChromaDB_VectorStore
             class CopperVanna(ChromaDB_VectorStore, Ollama):
                 def __init__(self, config=None):
                     ChromaDB_VectorStore.__init__(self, config=config)
