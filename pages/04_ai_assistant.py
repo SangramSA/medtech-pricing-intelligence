@@ -5,11 +5,41 @@ Uses local Ollama models — no API key needed.
 """
 
 import os
+import re
 import streamlit as st
-from utils.data_loader import DB_PATH
+from utils.data_loader import DB_PATH, get_current_tenant_id
 
 # ChromaDB persistence under project root (keeps vector store out of repo root)
 CHROMA_PATH = os.path.join(os.path.dirname(os.path.dirname(DB_PATH)), "chroma_db")
+
+# Tables/views that are tenant-scoped (have tenant_id)
+TENANT_SCOPED = ("transactions", "contracts", "v_portfolio_summary", "v_price_waterfall",
+                 "v_customer_performance", "v_monthly_trends", "v_contract_risk")
+
+
+def inject_tenant_filter(sql: str, tenant_id: str) -> str:
+    """Inject tenant_id filter into generated SQL so AI Assistant respects manufacturer (tenant) isolation."""
+    if not sql or not sql.strip():
+        return sql
+    # Only inject if the query references a tenant-scoped table/view
+    sql_upper = sql.upper()
+    if not any(re.search(rf"\b{t}\b", sql_upper) for t in (t.upper() for t in TENANT_SCOPED)):
+        return sql
+    tid = tenant_id.replace("'", "''")
+    condition = f"tenant_id = '{tid}'"
+    # Add after first WHERE, or add new WHERE before GROUP BY / ORDER BY / LIMIT
+    if re.search(r"\bWHERE\b", sql, re.IGNORECASE):
+        sql = re.sub(r"(\bWHERE\b)", rf" WHERE {condition} AND ", sql, count=1)
+    else:
+        for pattern in [r"\bGROUP\s+BY\b", r"\bORDER\s+BY\b", r"\bLIMIT\s+\d+"]:
+            m = re.search(pattern, sql, re.IGNORECASE)
+            if m:
+                sql = sql[: m.start()] + f" WHERE {condition} " + sql[m.start() :]
+                break
+        else:
+            sql = sql.rstrip().rstrip(";") + f" WHERE {condition} "
+    return sql
+
 
 st.title("🤖 AI Pricing Assistant")
 st.caption("Ask questions about your pricing data in plain English. Powered by Vanna AI + Ollama (local LLM) + DuckDB.")
@@ -54,16 +84,16 @@ def setup_vanna():
             ) -- Medical device product catalog. category: Orthopedic Implants, Cardiovascular, Surgical Instruments, Consumables""",
 
             """CREATE TABLE contracts (
-                contract_id VARCHAR, idn_id VARCHAR, gpo_id VARCHAR,
+                contract_id VARCHAR, tenant_id VARCHAR, idn_id VARCHAR, gpo_id VARCHAR,
                 deal_structure VARCHAR, device_category VARCHAR,
                 start_date DATE, end_date DATE, duration_months INTEGER,
                 base_discount_pct DOUBLE, market_share_commitment DOUBLE,
                 status VARCHAR, annual_volume_target INTEGER,
                 safe_harbor_compliant BOOLEAN, aks_risk_flag VARCHAR
-            ) -- Pricing contracts. deal_structure: PV (Primary Vendor, 80%+ share), DV (Dual Vendor, 40-60%), TV (TriVendor, ~30%), Access (no commitment), All Play (open competition). status: Active/Expired/Renewed/Pending""",
+            ) -- Pricing contracts. tenant_id isolates data by manufacturer. deal_structure: PV, DV, TV, Access, All Play. status: Active/Expired/Renewed/Pending""",
 
             """CREATE TABLE transactions (
-                transaction_id VARCHAR, contract_id VARCHAR, idn_id VARCHAR,
+                transaction_id VARCHAR, tenant_id VARCHAR, contract_id VARCHAR, idn_id VARCHAR,
                 gpo_id VARCHAR, product_id VARCHAR, transaction_date DATE,
                 quantity INTEGER, list_price DOUBLE, invoice_price DOUBLE,
                 gpo_admin_fee DOUBLE, rebate_amount DOUBLE,
@@ -72,7 +102,7 @@ def setup_vanna():
                 deal_structure VARCHAR, device_category VARCHAR,
                 region VARCHAR, idn_tier VARCHAR, quarter VARCHAR,
                 year INTEGER, month INTEGER
-            ) -- Individual purchase transactions with full pricing waterfall. lowest_net_price = invoice_price - gpo_admin_fee - rebate_amount. margin = lowest_net_price - unit_cost""",
+            ) -- Individual purchase transactions. tenant_id isolates by manufacturer. lowest_net_price = invoice_price - gpo_admin_fee - rebate_amount""",
 
             """CREATE TABLE rebate_programs (
                 rebate_id VARCHAR, contract_id VARCHAR, rebate_type VARCHAR,
@@ -87,6 +117,7 @@ def setup_vanna():
             "Price erosion means margin_pct is declining over time. Look at trends in margin_pct grouped by quarter.",
             "The price waterfall shows how list_price gets discounted down to lowest_net_price through contract discounts, GPO fees, and rebates.",
             "Safe Harbor compliance means rebate terms were pre-established and contracted. Anti-Kickback Statute (AKS) risk flags indicate potential compliance issues.",
+            "Data is multi-tenant by manufacturer (tenant_id). Tables transactions, contracts and views v_portfolio_summary, v_price_waterfall, v_customer_performance, v_monthly_trends, v_contract_risk all have tenant_id; queries must filter by the current tenant for isolation.",
         ]
 
         for item in training_data:
@@ -136,6 +167,10 @@ def setup_vanna():
             {
                 "question": "Which products have the highest price erosion?",
                 "sql": "SELECT p.name AS product, p.category, ROUND(AVG(t.total_discount_pct) * 100, 1) AS avg_discount_pct, ROUND(AVG(t.margin_pct), 1) AS avg_margin, COUNT(*) AS transactions FROM transactions t JOIN products p ON t.product_id = p.product_id GROUP BY p.name, p.category HAVING COUNT(*) > 20 ORDER BY avg_discount_pct DESC LIMIT 10"
+            },
+            {
+                "question": "Which contracts are about to expire soon?",
+                "sql": "SELECT c.contract_id, c.start_date, c.end_date, DATEDIFF('day', CURRENT_DATE, CAST(c.end_date AS DATE)) AS days_until_expiration FROM contracts c WHERE DATEDIFF('day', CURRENT_DATE, CAST(c.end_date AS DATE)) BETWEEN 0 AND 30 ORDER BY days_until_expiration ASC"
             },
         ]
 
@@ -248,6 +283,10 @@ else:
                     sql = vn.generate_sql(user_input)
 
                     if sql and sql.strip():
+                        # Scope to current tenant (manufacturer) for data isolation
+                        tenant_id = get_current_tenant_id()
+                        sql = inject_tenant_filter(sql, tenant_id)
+
                         st.markdown("Here's what I found:")
 
                         with st.expander("🔍 View generated SQL", expanded=False):
